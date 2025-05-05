@@ -1,1 +1,69 @@
-{"cells": [{"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["!pip install --quiet openai gradio"]}, {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["import openai\n", "import gradio as gr\n", "import json"]}, {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["client = openai.OpenAI(api_key=\"sk-your-api-key-here\")"]}, {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["def get_order_status(order_id):\n", "    orders = {\n", "        \"12345\": \"Your order 12345 has been shipped and will arrive in 2 days.\",\n", "        \"67890\": \"Order 67890 is being processed and will ship tomorrow.\",\n", "        \"11111\": \"Order 11111 was delivered on May 1st.\"\n", "    }\n", "    return orders.get(order_id, \"Sorry, we couldn't find that order ID.\")"]}, {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["def chat_with_gpt(message, history):\n", "    messages = [{\"role\": \"system\", \"content\": \"You are a helpful support assistant.\"}]\n", "    for user_msg, bot_reply in history:\n", "        messages.append({\"role\": \"user\", \"content\": user_msg})\n", "        messages.append({\"role\": \"assistant\", \"content\": bot_reply})\n", "    messages.append({\"role\": \"user\", \"content\": message})\n", "    response = client.chat.completions.create(\n", "        model=\"gpt-4\",\n", "        messages=messages,\n", "        functions=[\n", "            {\n", "                \"name\": \"get_order_status\",\n", "                \"description\": \"Check order status\",\n", "                \"parameters\": {\n", "                    \"type\": \"object\",\n", "                    \"properties\": {\n", "                        \"order_id\": {\n", "                            \"type\": \"string\",\n", "                            \"description\": \"The order ID\"\n", "                        }\n", "                    },\n", "                    \"required\": [\"order_id\"]\n", "                }\n", "            }\n", "        ],\n", "        function_call=\"auto\"\n", "    )\n", "    msg = response.choices[0].message\n", "    if msg.function_call:\n", "        args = json.loads(msg.function_call.arguments)\n", "        order_id = args.get(\"order_id\", \"\")\n", "        result = get_order_status(order_id)\n", "        history.append((message, result))\n", "        return \"\", history\n", "    else:\n", "        bot_reply = msg.content\n", "        history.append((message, bot_reply))\n", "        return \"\", history"]}, {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [], "source": ["with gr.Blocks() as demo:\n", "    gr.Markdown(\"## Order Support Chatbot\")\n", "    chatbot = gr.Chatbot()\n", "    msg = gr.Textbox(label=\"Ask about your order:\")\n", "    state = gr.State([])\n", "    msg.submit(chat_with_gpt, [msg, state], [msg, chatbot, state])\n", "demo.launch()"]}], "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}, "language_info": {"name": "python", "version": "3.11"}}, "nbformat": 4, "nbformat_minor": 2}
+# order_support_chatbot.py
+
+import openai
+import gradio as gr
+import json
+
+# Set your OpenAI API key
+client = openai.OpenAI(api_key="sk-your-api-key-here")
+
+# Mock function for checking order status
+def get_order_status(order_id):
+    orders = {
+        "12345": "Your order 12345 has been shipped and will arrive in 2 days.",
+        "67890": "Order 67890 is being processed and will ship tomorrow.",
+        "11111": "Order 11111 was delivered on May 1st."
+    }
+    return orders.get(order_id, "Sorry, we couldn't find that order ID.")
+
+# Chat function with GPT and function calling
+def chat_with_gpt(message, history):
+    messages = [{"role": "system", "content": "You are a helpful support assistant."}]
+    for user_msg, bot_reply in history:
+        messages.append({"role": "user", "content": user_msg})
+        messages.append({"role": "assistant", "content": bot_reply})
+    messages.append({"role": "user", "content": message})
+
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=messages,
+        functions=[
+            {
+                "name": "get_order_status",
+                "description": "Check order status",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_id": {
+                            "type": "string",
+                            "description": "The order ID"
+                        }
+                    },
+                    "required": ["order_id"]
+                }
+            }
+        ],
+        function_call="auto"
+    )
+
+    msg = response.choices[0].message
+    if msg.function_call:
+        args = json.loads(msg.function_call.arguments)
+        order_id = args.get("order_id", "")
+        result = get_order_status(order_id)
+        history.append((message, result))
+        return "", history
+    else:
+        bot_reply = msg.content
+        history.append((message, bot_reply))
+        return "", history
+
+# Launch Gradio app
+with gr.Blocks() as demo:
+    gr.Markdown("## Order Support Chatbot")
+    chatbot = gr.Chatbot()
+    msg = gr.Textbox(label="Ask about your order:")
+    state = gr.State([])
+    msg.submit(chat_with_gpt, [msg, state], [msg, chatbot, state])
+
+demo.launch()
